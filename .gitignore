@@ -16,3 +16,4 @@ data/learn/raw/
 data/tmp/
 data/*.xml
 data/feeds*.txt
+*.tsbuildinfo

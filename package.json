@@ -1,0 +1,38 @@
+{
+  "name": "yuejie-news",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c blue,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:web": "vite --host",
+    "dev:server": "node --env-file-if-exists=.env server/index.mjs",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "site": "tsc -b && vite build --mode site --outDir site && node scripts/export-site.mjs",
+    "site:preview": "vite preview --mode site --outDir site --port 4174",
+    "site:publish": "npm run site && node D:/npm-global/node_modules/wrangler/bin/wrangler.js pages deploy site --project-name yuejie-site --branch main",
+    "learn:import": "node scripts/import-learn-de.mjs",
+    "learn:gloss": "node scripts/translate-learn-gloss.mjs",
+    "learn:words": "node scripts/translate-learn-words.mjs",
+    "learn:check": "node scripts/learn-acceptance.mjs",
+    "apk": "npm run build && cap sync android && cd android && gradlew.bat assembleRelease && cd .. && node -e \"require('fs').copyFileSync('android/app/build/outputs/apk/release/app-release.apk','dist/yuejie.apk')\""
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "fast-xml-parser": "^4.5.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^7.6.10",
+    "@capacitor/cli": "^7.6.10",
+    "@capacitor/core": "^7.6.10",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7"
+  }
+}

@@ -1,0 +1,68 @@
+name: 发布静态快照
+
+# 为什么放在 GitHub Actions：这台电脑关机 / 断网时，`yuejie-site.pages.dev` 就没人重新生成。
+# runner 的网络是通的，可以直接跑现成的聚合与导出，再把 site/ 推到 Pages。
+# 代价：翻译源（youdao / MyMemory）在云厂商共享 IP 上经常限流，标题翻译会比本机差；去重账本靠 cache 续命。
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 上一轮没跑完不叠加下一轮，避免两个进程抢同一个 sqlite
+concurrency:
+  group: publish-site
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      # sqlite 账本和翻译缓存都不进仓库，靠 cache 跨轮次延续；
+      # key 每轮唯一、restore-keys 取最新，旧条目由 GitHub 按 LRU 淘汰
+      - name: 恢复去重账本与翻译缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/press.sqlite3
+            data/push.sqlite3
+            data/translations.json
+          key: yuejie-state-${{ github.run_id }}
+          restore-keys: |
+            yuejie-state-
+
+      - name: 写入运行环境
+        env:
+          RELAY_URL: ${{ secrets.RELAY_URL }}
+          RELAY_TOKEN: ${{ secrets.RELAY_TOKEN }}
+        run: |
+          mkdir -p data
+          : > .env
+          echo "PORT=8787" >> .env
+          if [ -n "$RELAY_URL" ]; then echo "RELAY_URL=$RELAY_URL" >> .env; fi
+          if [ -n "$RELAY_TOKEN" ]; then echo "RELAY_TOKEN=$RELAY_TOKEN" >> .env; fi
+
+      # 导出脚本会自己拉起后端、等 /api/health 就绪，再跑 npm run site
+      - name: 起后端并导出快照
+        run: node scripts/publish-site.mjs --export-only
+
+      - name: 推送到 Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 pages deploy site --project-name yuejie-site --branch main

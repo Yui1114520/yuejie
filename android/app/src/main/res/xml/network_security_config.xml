@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+      后端在用户自己的机器上，局域网 IP 由 DHCP 分配、会变，没法按 IP 逐条白名单，
+      所以这里整体放开明文；接口本身只输出题录与摘要，登录凭证与中转 token 一律不在手机端。
+      若以后把后端搬到公网，请先在前方挂好 https，再把这里收紧成 base-config false。
+    -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

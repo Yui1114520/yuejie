@@ -212,8 +212,16 @@ await mkdir(DATA_DIR, { recursive: true });
 const outputs = new Map();
 const imageUrls = new Set();
 
-const health = await fetchJson("/api/health");
+// 冷启动时 /api/health 会立刻返回，但此时还没有任何 payload；
+// 直接按空列表导出会把整站新闻清空（2026-11-16 线上就是这么空掉的）
+let health = await fetchJson("/api/health");
+if (!health.modules.some((m) => m.hasPayload)) {
+  console.log("[site] 后端还没有成品数据，先触发一轮构建并等它完成");
+  await fetchJson("/api/news?module=world");
+  health = await fetchJson("/api/health");
+}
 const moduleIds = health.modules.filter((m) => m.hasPayload).map((m) => m.id);
+if (!moduleIds.length) throw new Error("后端一轮构建后仍无任何模块，拒绝导出空快照");
 console.log(`[site] 模块：${moduleIds.join(", ")}`);
 
 const savedMeta = [];

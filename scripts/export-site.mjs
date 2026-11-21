@@ -238,6 +238,13 @@ for (const id of moduleIds) {
   });
 }
 
+// 中转 token 不匹配会让 43 个海外源整批 401，导出的就是半残站；
+// 这种是配置错误，宁可让任务红也不发出去
+const worldRelay = outputs.get("news-world.json")?.meta?.relay;
+if (worldRelay?.authFailed > 0) {
+  throw new Error(`中转鉴权失败 ${worldRelay.authFailed} 个源（RELAY_TOKEN 不匹配），拒绝发布半残快照`);
+}
+
 const pressAll = scrubPress(await fetchJson("/api/press"));
 collectImages(pressAll, imageUrls);
 outputs.set("press.json", pressAll);

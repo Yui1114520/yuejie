@@ -1,6 +1,6 @@
 name: 发布静态快照
 
-# 为什么放在 GitHub Actions：这台电脑关机 / 断网时，`yuejie-site.pages.dev` 就没人重新生成。
+# 为什么放在 GitHub Actions：这台电脑关机 / 断网时，yuejie-site.pages.dev 就没人重新生成。
 # runner 的网络是通的，可以直接跑现成的聚合与导出，再把 site/ 推到 Pages。
 # 代价：翻译源（youdao / MyMemory）在云厂商共享 IP 上经常限流，标题翻译会比本机差；去重账本靠 cache 续命。
 
@@ -59,16 +59,32 @@ jobs:
           restore-keys: |
             yuejie-state-
 
-      - name: 写入运行环境
+      # Secret 里多带一个空格或换行，会让 43 个海外源整批 401。
+      # 这里统一去掉空白，再真打一次中转做预检：401 就是 token 不对，立刻失败，不浪费一轮抓取
+      - name: 写入运行环境并校验中转
         env:
-          RELAY_URL: ${{ secrets.RELAY_URL }}
-          RELAY_TOKEN: ${{ secrets.RELAY_TOKEN }}
+          SECRET_RELAY_URL: ${{ secrets.RELAY_URL }}
+          SECRET_RELAY_TOKEN: ${{ secrets.RELAY_TOKEN }}
         run: |
           mkdir -p data
-          : > .env
-          echo "PORT=8787" >> .env
-          if [ -n "$RELAY_URL" ]; then echo "RELAY_URL=$RELAY_URL" >> .env; fi
-          if [ -n "$RELAY_TOKEN" ]; then echo "RELAY_TOKEN=$RELAY_TOKEN" >> .env; fi
+          url="$(printf '%s' "$SECRET_RELAY_URL" | tr -d '[:space:]')"
+          tok="$(printf '%s' "$SECRET_RELAY_TOKEN" | tr -d '[:space:]')"
+          if [ -z "$url" ]; then
+            echo "PORT=8787" > .env
+            echo "::warning::未配置 RELAY_URL，海外源会被整批跳过"
+            exit 0
+          fi
+          {
+            echo "PORT=8787"
+            echo "RELAY_URL=$url"
+            echo "RELAY_TOKEN=$tok"
+          } > .env
+          code="$(curl -s -o /dev/null -w '%{http_code}' -m 25 -X POST "$url/fetch" -H "authorization: Bearer $tok" -H 'content-type: application/json' -d '{"url":"https://example.com/"}')"
+          echo "中转预检 HTTP $code（403 或 200 表示 token 有效）"
+          if [ "$code" = "401" ]; then
+            echo "::error::RELAY_TOKEN 与中转不匹配（401），请到 Settings → Secrets 重新粘贴，不要带空格或换行"
+            exit 1
+          fi
 
       # 导出脚本会自己拉起后端、等 /api/health 就绪，再跑 npm run site
       - name: 起后端并导出快照

@@ -455,10 +455,30 @@ export async function fetchAllSources() {
   // 省级站响应慢，串行排队会拖垮整体构建；限制并发避免触发源站风控
   const results = await mapLimit(active, 12, (source) => fetchSource(source));
   const items = results.flatMap((r) => r.items);
+
+  // 中转 401 是配置错（token 不匹配），不是网络抖动，必须让上层能一眼看出来
+  const relayAuthFailed = results.filter(
+    (r) => r.via === "relay" && /中转 HTTP 401/.test(String(r.error ?? "")),
+  ).length;
+  const failed = results.filter((r) => !r.ok);
+  if (failed.length) {
+    const byError = new Map();
+    for (const item of failed) {
+      const key = String(item.error ?? "未知").slice(0, 26);
+      byError.set(key, (byError.get(key) ?? 0) + 1);
+    }
+    const summary = [...byError.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([key, count]) => `${key} ×${count}`)
+      .join(" / ");
+    console.log(`[news] 源失败 ${failed.length}/${results.length}：${summary}`);
+  }
+
   return {
     sources: results.map(({ items: _items, ...meta }) => meta),
     items,
-    relay: { configured: relayConfigured, pending },
+    relay: { configured: relayConfigured, pending, authFailed: relayAuthFailed },
   };
 }
 

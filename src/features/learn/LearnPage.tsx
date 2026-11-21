@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { isStaticSite } from "../../lib/api";
 import { fetchState, postSettings } from "./api";
 import { GrammarView } from "./GrammarView";
 import { ListeningView } from "./ListeningView";
@@ -78,21 +77,6 @@ export function LearnPage() {
       go(gate.redirect === "vocabulary" ? "vocabulary" : "reading", gate.reason ?? "尚未解锁听力");
     }
   }, [state, view, go]);
-
-  if (isStaticSite) {
-    return (
-      <div className="page learn">
-        <header className="learn-head">
-          <span className="learn-kicker">DEUTSCH · A2–B1</span>
-          <h1>学习</h1>
-        </header>
-        <div className="learn-empty">
-          <p>学习模块需要本地后端与本地词库（data/learn.sqlite3），静态快照站只发布新闻与报刊。</p>
-          <p className="learn-dim">在电脑上启动 <code>node server/index.mjs</code> 后即可使用背单词、阅读与听力流程。</p>
-        </div>
-      </div>
-    );
-  }
 
   if (error) {
     return (

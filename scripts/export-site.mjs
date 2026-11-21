@@ -131,6 +131,21 @@ async function mapLimit(items, limit, worker) {
 }
 
 // 图片在快照里必须变成站内文件：否则访客的网络取不到外媒 CDN，页面就成一片灰
+
+// 图片目录跨轮次复用后要限个上限，避免无限膨胀
+async function pruneImages(dir, limit) {
+  const names = await readdir(dir);
+  if (names.length <= limit) return;
+  const stats = [];
+  for (const name of names) {
+    stats.push({ name, at: statSync(path.join(dir, name)).mtimeMs });
+  }
+  stats.sort((a, b) => a.at - b.at);
+  for (const item of stats.slice(0, names.length - limit)) {
+    await rm(path.join(dir, item.name), { force: true });
+  }
+}
+
 async function localizeImages(urls) {
   const list = [...urls];
   const map = new Map();
@@ -138,9 +153,28 @@ async function localizeImages(urls) {
   await mkdir(RAW_DIR, { recursive: true });
   await mkdir(IMG_DIR, { recursive: true });
 
+  const hashOf = (url) => createHash("sha1").update(url).digest("hex").slice(0, 16);
+  // 已在本站的图片直接复用：以前每轮都把 img/ 删掉重下，几百张图能拖十几分钟，CI 上也最容易在这里翻车
+  const have = new Map();
+  for (const name of await readdir(IMG_DIR)) {
+    const dot = name.lastIndexOf(".");
+    if (dot > 0) have.set(name.slice(0, dot), name);
+  }
+  const todo = [];
+  for (const url of list) {
+    const name = have.get(hashOf(url));
+    if (name) map.set(url, `/img/${name}`);
+    else todo.push(url);
+  }
+  const reused = map.size;
+  if (!todo.length) {
+    console.log(`[site] 图片：${list.length} 张已全部在站内，跳过下载`);
+    return map;
+  }
+
   const fetched = (
-    await mapLimit(list, 4, async (url) => {
-      const hash = createHash("sha1").update(url).digest("hex").slice(0, 16);
+    await mapLimit(todo, 4, async (url) => {
+      const hash = hashOf(url);
       try {
         const res = await fetch(`${BASE}/api/img?u=${encodeURIComponent(url)}`, {
           signal: AbortSignal.timeout(60_000),
@@ -185,9 +219,11 @@ async function localizeImages(urls) {
   }
   for (const url of list) if (!map.has(url)) map.set(url, null);
 
+  if (reused) console.log(`[site] 图片：复用 ${reused} 张，新下载 ${fetched.length} 张`);
   const kept = await readdir(IMG_DIR);
   const total = kept.reduce((sum, name) => sum + statSync(path.join(IMG_DIR, name)).size, 0);
   await rm(RAW_DIR, { recursive: true, force: true });
+  await pruneImages(IMG_DIR, 4000);
   const local = [...map.values()].filter(Boolean).length;
   console.log(
     `[site] 图片：${local}/${list.length} 张原链已换成本站文件（${kept.length} 个 · ${(total / 1048576).toFixed(1)} MB）` +
@@ -205,7 +241,6 @@ async function dump(name, value) {
 
 console.log(`[site] 从 ${BASE} 导出快照${keepPersonal ? "（保留个人痕迹）" : "（已脱敏）"}`);
 await rm(DATA_DIR, { recursive: true, force: true });
-await rm(IMG_DIR, { recursive: true, force: true });
 await rm(RAW_DIR, { recursive: true, force: true });
 await mkdir(DATA_DIR, { recursive: true });
 
@@ -282,6 +317,15 @@ await dump(
     note: "静态快照版：在电脑上运行 npm run site:publish 更新；实时刷新与订阅修改不可用",
   },
 );
+
+// 学习栏静态数据：词库 + 作者稿阅读；进度留在浏览器 localStorage，不需要后端
+const learnBundle = path.resolve("data/learn/bundle.json");
+if (existsSync(learnBundle)) {
+  await copyFile(learnBundle, path.join(DATA_DIR, "learn.json"));
+  console.log(`  learn.json                   ${(statSync(learnBundle).size / 1048576).toFixed(1)} MB`);
+} else {
+  console.log("  ! 缺少 data/learn/bundle.json，先跑 node scripts/export-learn-bundle.mjs");
+}
 
 // Cloudflare Pages 靠这个文件把深链回落到 index.html，否则 /papers 刷新会 404
 await writeFile(path.join(OUT_DIR, "_redirects"), "/*  /index.html  200\n");

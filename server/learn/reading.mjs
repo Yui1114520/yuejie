@@ -304,6 +304,11 @@ function detectGrammar(textDe, sentences, tokens) {
   return points.slice(0, 5);
 }
 
+// 静态导出时用：只算文本里的语法点与证据区间，不依赖当日批次
+export function analyzePassage(textDe) {
+  return detectGrammar(textDe, sentencesOf(textDe), []);
+}
+
 export function validatePassage(passage, batchIds, { strictLength = true } = {}) {
   const problems = [];
   const batch = new Set(batchIds);

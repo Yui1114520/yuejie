@@ -55,6 +55,7 @@ jobs:
             data/press.sqlite3
             data/push.sqlite3
             data/translations.json
+            site/img
           key: yuejie-state-${{ github.run_id }}
           restore-keys: |
             yuejie-state-

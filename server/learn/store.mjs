@@ -511,6 +511,14 @@ export function upsertWord(card) {
     );
 }
 
+// 全量词库导出用（公网静态版把词库打进 site/data，进度仍留在浏览器本地）
+export function listPool() {
+  return getDb()
+    .prepare("SELECT * FROM words ORDER BY freq_rank ASC")
+    .all()
+    .map((row) => shapeCard(row));
+}
+
 export function getWord(id) {
   const row = getDb().prepare("SELECT * FROM words WHERE id = ?").get(id);
   return row ? shapeCard(row) : null;
